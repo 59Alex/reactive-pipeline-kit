@@ -33,6 +33,15 @@ Build from the local 0.3.0 source checkout. The core and Jolt run on Java 17; ne
 
 Run in the reactive-pipeline-kit repository root with JDK 17+. Artifacts go to your local Maven repository.
 
+Run the included independent consumer directly:
+
+```bash
+./gradlew -p docs/0.3.0/examples run
+```
+
+[Example runner, source files, optional modules and expected output](examples/README.md#english).
+It resolves local JARs rather than compiling sibling library sources. To create your own consumer instead, use:
+
 ```kotlin
 plugins { application }
 repositories {
@@ -310,7 +319,7 @@ System.out.println("events=" + events.stream().map(StepEvent::kind).toList());
 
 Example.java: diagnostics(), Java 17+. Expected: events=[STARTED, SUCCEEDED]. A new subscription creates a new execution ID.
 
-Keep observers nonblocking and thread-safe. Observer failures go to the Reactor onErrorDropped hook and do not cause business-operation retries. Step events omit payloads, but their exception object may still contain application data.
+Keep observers nonblocking and thread-safe. Observer failures go to the Reactor onErrorDropped hook and do not cause business-operation retries. If that hook also throws a nonfatal exception, it is discarded without invoking the hook again. Reactor-fatal errors are rethrown. Step events omit payloads, but their exception object may still contain application data.
 
 ```bash
 ./gradlew -Pjava27 -PtestJavaVersion=27 build publishToMavenLocal
@@ -391,6 +400,8 @@ Example.java: failure(). Expected: failure=lookup; cause=NoSuchElementException.
 > There is no durable execution log, restart recovery, distributed transaction or exactly-once side-effect guarantee. Use an external durable source/checkpoint layer when records must survive process crashes, and make retried effects idempotent.
 
 ## Downloadable examples
+
+[Run examples and return to this guide](examples/README.md#english).
 
 - [Example.java](examples/Example.java)
 - [JfrExample.java](examples/JfrExample.java)

@@ -146,7 +146,7 @@ Mono; a noncooperative callback or remote system may still continue its work.
 | Step never completes | Earlier steps may have effects | Attempt timeout cancels current subscription | Bounded retry or final StepFailure; virtual-time timeout/cancel test |
 | One of several records fails | Other records may have completed or sent requests | Processing fails and cancels active siblings | App chooses checkpoint/replay; sibling-cancellation test |
 | Consumer cancels | Some results may already be emitted | Upstream and active work receive cancellation | No automatic replay or rollback; concurrency/cancellation test |
-| Observer throws | Business step may have succeeded | Error sent to Reactor onErrorDropped hook | Repair observer; observer-isolation test ensures no repeated effect |
+| Observer or its diagnostic hook throws | Business step may have succeeded | Observer error sent to Reactor onErrorDropped; a nonfatal hook failure is discarded without recursion | Repair diagnostics; observer/hook isolation tests ensure no repeated effect. Reactor-fatal errors still propagate |
 | Conditional predicate throws | Earlier steps completed, conditional body did not run | StepFailure with zero attempts | Correct input/predicate; no retry of condition |
 | Jolt receives unsupported/cyclic data | Earlier steps may have completed | Named transformation error | Validate payload; JSON-copy boundary tests |
 | Process terminates | No execution state is durably stored | Active work and progress are lost | Host application provides durable source/checkpoints if needed |

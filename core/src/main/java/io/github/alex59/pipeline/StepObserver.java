@@ -3,6 +3,8 @@ package io.github.alex59.pipeline;
 /**
  * Nonblocking, thread-safe diagnostics sink. Observer failures are sent to
  * Reactor's onErrorDropped hook and never trigger a business-operation retry.
+ * If that hook also throws a nonfatal exception, it is discarded without calling
+ * the hook again. Reactor-fatal errors are rethrown, not treated as diagnostics.
  */
 @FunctionalInterface
 public interface StepObserver {

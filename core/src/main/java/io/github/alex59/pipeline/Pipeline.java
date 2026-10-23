@@ -206,7 +206,13 @@ public final class Pipeline<I, O> {
                     attempt, kind, Duration.ofNanos(Math.max(0, elapsedNanos)), error));
         } catch (Throwable observerError) {
             Exceptions.throwIfFatal(observerError);
-            Operators.onErrorDropped(observerError, reactor.util.context.Context.of(execution.context().subscriberContext()));
+            try {
+                Operators.onErrorDropped(observerError, reactor.util.context.Context.of(execution.context().subscriberContext()));
+            } catch (Throwable hookError) {
+                // The diagnostic fallback is application code too. Do not let its
+                // failure retry a successful effect, or recursively report to it.
+                Exceptions.throwIfFatal(hookError);
+            }
         }
     }
 }

@@ -16,6 +16,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 import reactor.util.context.Context;
 
@@ -232,6 +233,82 @@ class PipelineTest {
         } finally {
             Hooks.resetOnErrorDropped();
         }
+    }
+
+    @Test
+    void failingDiagnosticHookCannotRepeatSuccessfulBusinessOperation() {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicInteger hookCalls = new AtomicInteger();
+        Hooks.onErrorDropped(error -> {
+            hookCalls.incrementAndGet();
+            throw new IllegalStateException("diagnostic transport unavailable");
+        });
+        try {
+            var pipeline = Pipeline.<Integer>start().then("effect", (input, context) -> {
+                calls.incrementAndGet();
+                return Mono.just(input);
+            }, new StepPolicy(Duration.ofSeconds(1), 2, Duration.ZERO, error -> true))
+                    .observe(event -> {
+                        if (event.kind() == StepEvent.Kind.SUCCEEDED) {
+                            throw new IllegalStateException("observer unavailable");
+                        }
+                    });
+            StepVerifier.create(pipeline.run(7)).expectNext(7).verifyComplete();
+            assertEquals(1, calls.get());
+            assertEquals(1, hookCalls.get());
+        } finally {
+            Hooks.resetOnErrorDropped();
+        }
+    }
+
+    @Test
+    void cancellationDuringRetryDelayPreventsAnotherAttempt() {
+        AtomicInteger attempts = new AtomicInteger();
+        StepVerifier.withVirtualTime(() -> Pipeline.<Integer>start().<Integer>then("retry",
+                (input, context) -> {
+                    attempts.incrementAndGet();
+                    return Mono.error(new IOException("temporary"));
+                }, new StepPolicy(Duration.ofSeconds(1), 2, Duration.ofSeconds(10), error -> true))
+                .run(1))
+                .thenAwait(Duration.ofSeconds(5))
+                .thenCancel().verify();
+        assertEquals(1, attempts.get());
+    }
+
+    @Test
+    void bothOrderingsRespectDemandAndBoundInitialWork() {
+        for (Ordering ordering : Ordering.values()) {
+            AtomicInteger started = new AtomicInteger();
+            var pipeline = Pipeline.<Integer>start().map("work", input -> {
+                started.incrementAndGet();
+                return input;
+            });
+            StepVerifier.create(pipeline.process(Flux.range(1, 100), 3, ordering), 0)
+                    .then(() -> assertTrue(started.get() <= 3))
+                    .thenRequest(1).expectNext(1)
+                    .thenRequest(2).expectNext(2, 3)
+                    .thenCancel().verify();
+        }
+    }
+
+    @Test
+    void reactorAndExplicitContextsAgreeAfterSchedulerHopAndRetry() {
+        var attempts = new ConcurrentHashMap<UUID, AtomicInteger>();
+        var pipeline = Pipeline.<Integer>start().then("context", (input, execution) ->
+                Mono.deferContextual(context -> {
+                    assertEquals(input, context.get("record"));
+                    assertEquals(input, execution.subscriberContext().get("record"));
+                    int attempt = attempts.computeIfAbsent(execution.executionId(), id -> new AtomicInteger())
+                            .incrementAndGet();
+                    return attempt == 1 ? Mono.<Integer>error(new IOException("temporary")) : Mono.just(input);
+                }).subscribeOn(Schedulers.parallel()),
+                new StepPolicy(Duration.ofSeconds(3), 1, Duration.ZERO, IOException.class::isInstance));
+        StepVerifier.create(Flux.range(0, 20).flatMap(input -> pipeline.run(input)
+                        .contextWrite(Context.of("record", input)), 4).collectList())
+                .assertNext(results -> assertEquals(20, new java.util.HashSet<>(results).size()))
+                .verifyComplete();
+        assertEquals(20, attempts.size());
+        assertTrue(attempts.values().stream().allMatch(value -> value.get() == 2));
     }
 
     @Test
