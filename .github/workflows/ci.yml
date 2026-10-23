@@ -7,12 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: ['17', '21']
+        distribution: ['temurin', 'oracle']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: ${{ matrix.java }}
+          distribution: ${{ matrix.distribution }}
+          java-version: '27'
+          check-latest: true
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew build --no-daemon

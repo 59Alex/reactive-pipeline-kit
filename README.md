@@ -4,7 +4,7 @@ Typed Reactor pipelines for record enrichment and transformation, with explicit
 retry boundaries, bounded concurrency, and named step diagnostics.
 
 [![Build](https://github.com/59Alex/reactive-pipeline-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/59Alex/reactive-pipeline-kit/actions/workflows/ci.yml)
-[![Java 17+](https://img.shields.io/badge/Java-17%2B-437291)](https://github.com/59Alex/reactive-pipeline-kit)
+[![Java 27+](https://img.shields.io/badge/Java-27%2B-437291)](https://github.com/59Alex/reactive-pipeline-kit)
 [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 When a record passes validation, remote enrichment, and reshaping, a retry of
@@ -16,7 +16,7 @@ step and reports the step and attempt that failed.
 
 | Module | Purpose |
 |---|---|
-| `core` | Typed composition, conditions, per-attempt timeout, filtered retries, concurrent record processing, observer events, JDK HTTP adapter |
+| `core` | Typed composition, conditions, per-attempt timeout, filtered retries, concurrent record processing, observer events, JDK HTTP and explicit blocking adapters |
 | `jolt` | Isolated JSON-tree transformations using Jolt's built-in operations |
 
 The core depends on Reactor, without Spring, reflection, scripting, or a runtime
@@ -25,7 +25,9 @@ container. The Jolt module is optional.
 
 ## Build and use
 
-Requires a JDK 17 or newer. The Gradle wrapper is included.
+Version 0.2.0 requires JDK 27 or newer, without preview flags. The Gradle wrapper
+is included. See the [Java 27 migration notes](docs/JAVA-27.md) when upgrading
+from the Java 17-based 0.1.x release.
 
 ```sh
 ./gradlew build
@@ -40,9 +42,9 @@ repositories {
     mavenCentral()
 }
 dependencies {
-    implementation("io.github.59alex:reactive-pipeline-kit:0.1.0")
+    implementation("io.github.59alex:reactive-pipeline-kit:0.2.0")
     // Optional JSON transformations:
-    implementation("io.github.59alex:reactive-pipeline-kit-jolt:0.1.0")
+    implementation("io.github.59alex:reactive-pipeline-kit-jolt:0.2.0")
 }
 ```
 
@@ -110,6 +112,45 @@ error *inside the HTTP step* and apply a retry policy to that step. A later
 validation error does not rerun an earlier HTTP request. The chosen body handler
 determines buffering; `ofString()` loads the response body into memory.
 
+## Blocking I/O on virtual threads
+
+Keep asynchronous clients on the normal `Step` API. For a blocking driver or
+legacy call, `BlockingSteps.call` runs each attempt on an executor supplied by the
+application. A virtual-thread-per-task executor is useful for blocking I/O:
+
+```java
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.Executors;
+
+// Application entry point; the application owns the executor's lifecycle.
+try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+    var readFile = Pipeline.<Path>start()
+        .then("read", BlockingSteps.call(executor, Files::readString));
+
+    String contents = readFile.run(Path.of("document.txt"))
+        .block(Duration.ofSeconds(5));
+}
+```
+
+The final `block` is appropriate only at a synchronous application boundary,
+not on a Reactor event-loop thread. In a reactive application, keep the executor
+alive for the application's lifetime and close it during shutdown. The library
+never creates or closes it, and does not install an implicit scheduler.
+
+Inside the blocking operation, `BlockingSteps.currentContext()` exposes its
+`ExecutionContext` through a scoped value. It is empty outside the synchronous
+operation, including downstream signals and unrelated executor tasks. Reactor
+context remains the mechanism for asynchronous propagation; scoped values do
+not automatically follow scheduler hops.
+
+Cancellation and attempt timeout cancel the `FutureTask` with interruption
+requested. An interruptible operation can stop; an operation that ignores
+interrupts can keep running, even while a retry starts. Use idempotency for
+external effects. `process(..., concurrency, ...)` still limits subscribed
+records; virtual threads do not impose that limit themselves. Do not supply an
+executor that runs blocking tasks inline on the subscribing thread.
+
 ## Diagnostics and subscriber context
 
 ```java
@@ -163,13 +204,14 @@ compilation is an isolation tradeoff, not a throughput optimization.
 | Retry | Only the failing step, only accepted errors; disabled by default |
 | Timeout | Per attempt, 30 seconds by default; retry delay is additional time |
 | Cancellation | Propagates upstream and to active work; no rollback of external effects |
-| Concurrency | At most the configured number of active records; does not create worker threads |
+| Concurrency | At most the configured number of subscribed records; explicit blocking tasks use the application's executor |
 | `Ordering.INPUT` | Keeps input order, buffering later completed records behind a slow record |
 | `Ordering.COMPLETION` | Emits completed records without waiting for earlier ones |
 | Failure | Fails the processing stream and cancels sibling work; already emitted results remain emitted |
 | State | New execution ID and retry counters per run subscription; no deep copy of caller values |
 
-Callbacks must return promptly and support cancellation. A Reactor timeout
+Ordinary `Step.apply` callbacks must return promptly; put blocking operations
+behind the explicit adapter. A Reactor timeout
 cannot forcibly stop blocking Java code or undo a server-side write. Retries can
 repeat a side effect after an ambiguous failure; use idempotency keys where
 needed. Retried steps receive the same input reference, so mutating it can change
@@ -186,8 +228,11 @@ Tests cover retry isolation and exhaustion, cancellation of active siblings,
 timeout cancellation and delayed retry, concurrency limits and replenishment,
 output ordering, per-subscription identity and retry budget, conditions, observer
 failure isolation, a real local HTTP exchange, and concurrent Jolt transformations.
-CI builds on JDK 17 and 21. Tests use Reactor virtual time where timing is part of
-the contract.
+Blocking-adapter tests use real virtual threads and verify scoped-context
+isolation, interruption, cancellation during executor handoff, retry boundaries,
+and executor rejection. JSON tests preserve numeric types and reject nonfinite
+or unsupported numbers. CI builds on JDK 27. Tests use Reactor virtual time where
+timing is part of the asynchronous contract.
 
 ## License
 

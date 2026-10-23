@@ -4,17 +4,18 @@ subprojects {
     apply(plugin = "java-library")
     apply(plugin = "maven-publish")
     group = "io.github.59alex"
-    version = "0.1.0"
+    version = "0.2.0"
     repositories { mavenCentral() }
 
     extensions.configure<JavaPluginExtension> {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        toolchain.languageVersion.set(JavaLanguageVersion.of(27))
+        sourceCompatibility = JavaVersion.VERSION_27
+        targetCompatibility = JavaVersion.VERSION_27
         withSourcesJar()
         withJavadocJar()
     }
     tasks.withType<JavaCompile>().configureEach {
-        options.release.set(17)
+        options.release.set(27)
         options.encoding = "UTF-8"
     }
     tasks.withType<Test>().configureEach { useJUnitPlatform() }
@@ -23,9 +24,10 @@ subprojects {
         from(rootProject.file("LICENSE")) { into("META-INF") }
     }
     dependencies {
-        "testImplementation"("org.junit.jupiter:junit-jupiter:5.11.4")
-        "testImplementation"("io.projectreactor:reactor-test:3.7.0")
-        "testRuntimeOnly"("org.junit.platform:junit-platform-launcher:1.11.4")
+        "testImplementation"(platform("org.junit:junit-bom:6.1.3"))
+        "testImplementation"("org.junit.jupiter:junit-jupiter")
+        "testImplementation"("io.projectreactor:reactor-test:3.8.8")
+        "testRuntimeOnly"("org.junit.platform:junit-platform-launcher")
     }
     extensions.configure<PublishingExtension> {
         publications {

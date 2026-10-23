@@ -40,11 +40,32 @@ runtime context; it does not imply a deployed queue or independent executor.
 | `Step` | Application transformation; must return a cold, one-result Mono |
 | `StepObserver` | Diagnostics without payload copies; may be called concurrently |
 | `HttpPort` | Application-owned remote-call boundary and error classification |
+| `BlockingSteps` | Explicit executor boundary for blocking I/O, cancellation through FutureTask, bounded scoped context |
 | `JoltStep` | Specification snapshot, built-in operation allowlist, defensive copies |
 
 No mutable attempt counter is stored in the reusable definition. The captured
 callbacks, observer, input objects, and objects stored inside Reactor context are
 still caller-owned; this library cannot make them immutable or thread-safe.
+
+### Blocking adapter boundary
+
+`BlockingSteps` creates a new `FutureTask` at subscription and registers its
+cancellation handler before handing it to the application's executor. Cancellation
+during executor handoff therefore still reaches the exact task. A queued task
+cancelled before it starts does not invoke the operation. Cancelling an already
+running task requests interruption; cooperation remains the operation's duty.
+
+The task binds an immutable `ExecutionContext` with `ScopedValue` only around the
+blocking operation. Its `done()` callback uses terminal `Future.State`,
+`resultNow()`, or `exceptionNow()` after that binding has ended. It does not block
+waiting for a result, and downstream signals do not inherit the scoped binding.
+Reactor context is still used for asynchronous propagation. A cancelled operation
+that ignores interruption may remain inside its binding until it actually exits.
+
+The application creates and closes the executor. A virtual-thread-per-task
+executor allows blocking I/O without making the pipeline core blocking, but it
+does not bound submission by itself. Use `process` concurrency limits and do not
+interpret cancellation as proof that the physical I/O has stopped.
 
 ## Critical flow: enrichment fails once
 
@@ -75,6 +96,9 @@ Mono; a noncooperative callback or remote system may still continue its work.
 - Observer failures cannot turn successful business work into a retried step.
 - Jolt receives fresh mutable copies and a new transform instance for each
   attempt. Only the allowlisted built-in operations can be selected.
+- Blocking operations run only through an explicitly supplied executor. Their
+  scoped binding ends on operation exit, including exceptional exit, and is not
+  used as a substitute for Reactor context.
 
 ## Decisions and tradeoffs
 
@@ -84,7 +108,8 @@ Mono; a noncooperative callback or remote system may still continue its work.
 | Sequential steps per record, concurrent records | Retry boundaries stay local and understandable | Within-record parallel branches need an explicit application step |
 | Fixed retry delay, no implicit retries | Predictable budget and easy virtual-time testing | Large shared deployments may need jitter; provide a separately reviewed policy extension |
 | Input-order option | Deterministic downstream sequence | Head-of-line blocking; choose completion order when unnecessary |
-| No implicit scheduler changes | Compatible with existing Reactor applications | Blocking or CPU-heavy callbacks must choose appropriate schedulers explicitly |
+| No implicit scheduler changes | Compatible with existing Reactor applications | Blocking calls use an explicit executor adapter; CPU-heavy work chooses an appropriate scheduler explicitly |
+| Explicit virtual-thread-capable adapter | Allows blocking drivers at a visible boundary with cooperative cancellation | Noncooperative I/O can outlive cancellation; executor lifecycle belongs to the application |
 | Fresh Jolt instance and copied trees | Isolation without locks or assumptions about transform thread safety | Extra allocation and compilation per record; benchmark before optimizing |
 
 ## Failure scenarios
@@ -99,6 +124,8 @@ Mono; a noncooperative callback or remote system may still continue its work.
 | Conditional predicate throws | Earlier steps completed, conditional body did not run | StepFailure with zero attempts | Correct input/predicate; no retry of condition |
 | Jolt receives unsupported/cyclic data | Earlier steps may have completed | Named transformation error | Validate payload; JSON-copy boundary tests |
 | Process terminates | No execution state is durably stored | Active work and progress are lost | Host application provides durable source/checkpoints if needed |
+| Executor rejects a blocking task | This blocking attempt has not run | Named StepFailure retaining RejectedExecutionException | Restore executor capacity/lifecycle; rejection test |
+| Blocking task ignores interrupt | External I/O may still be active | Reactor observes cancellation/timeout before physical work stops | Application timeout/idempotency; no force-stop guarantee |
 
 The JDK adapter cancellation test and real HTTP exchange establish local client
 behavior only. They do not prove that cancellation stops a remote operation.

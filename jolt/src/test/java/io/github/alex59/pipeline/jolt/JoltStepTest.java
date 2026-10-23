@@ -8,6 +8,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
@@ -46,5 +49,46 @@ class JoltStepTest {
         List<Object> cyclic = new ArrayList<>();
         cyclic.add(cyclic);
         assertThrows(IllegalArgumentException.class, () -> JoltStep.fromSpec(cyclic));
+    }
+
+    @Test
+    void patternSwitchPreservesJsonScalarTypesAndNestedNulls() {
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("null", null);
+        input.put("text", "value");
+        input.put("boolean", true);
+        input.put("byte", (byte) 7);
+        input.put("short", (short) 300);
+        input.put("integer", 100000);
+        input.put("long", Long.MAX_VALUE);
+        input.put("bigInteger", new BigInteger("123456789012345678901234567890"));
+        input.put("bigDecimal", new BigDecimal("12345678901234567890.12345678901234567890"));
+        input.put("float", 0.25f);
+        input.put("double", 0.125d);
+        input.put("nested", new ArrayList<>(java.util.Arrays.asList(null, "x", 2)));
+        var step = JoltStep.fromSpec(List.of(Map.of("operation", "sort")));
+        var output = assertInstanceOf(Map.class, Pipeline.<Object>start().then("sort", step).run(input).block());
+        assertEquals(input, output);
+        input.forEach((key, value) -> {
+            if (value instanceof Number) assertSame(value.getClass(), output.get(key).getClass());
+        });
+        assertNotSame(input, output);
+        assertNotSame(input.get("nested"), output.get("nested"));
+    }
+
+    @Test
+    void guardsRejectNonfiniteAndUnsupportedNumberClasses() {
+        var step = JoltStep.fromSpec(List.of(Map.of("operation", "sort")));
+        var pipeline = Pipeline.<Object>start().then("sort", step);
+        for (Object invalid : List.of(Float.NaN, Float.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY,
+                Double.NaN, new AtomicInteger(1), new BigInteger("1") { },
+                new BigDecimal("1.0") { }, new Object())) {
+            var failure = assertThrows(io.github.alex59.pipeline.StepFailure.class,
+                    () -> pipeline.run(Map.of("value", invalid)).block());
+            assertInstanceOf(IllegalArgumentException.class, failure.getCause());
+        }
+        var failure = assertThrows(io.github.alex59.pipeline.StepFailure.class,
+                () -> pipeline.run(Map.of(1, "non-string-key")).block());
+        assertInstanceOf(IllegalArgumentException.class, failure.getCause());
     }
 }
