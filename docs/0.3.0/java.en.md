@@ -1,7 +1,9 @@
 # reactive-pipeline-kit 0.3.0 — Java: compatibility and adopted features
 
+[← Back to usage guide / Назад к руководству](en.md)
+
 [English](java.en.md) · [Русский](java.ru.md)<br>
-[Usage guide](en.md) · [Library versions](../README.md)
+[Usage guide](en.md) · [Library versions](../index.md)
 
 [Java 17](#java-17) · [Java 21](#java-21) · [Java 25](#java-25) · [Java 27](#java-27)
 
@@ -67,3 +69,5 @@ The optional reactive-pipeline-kit-java27 module adds JfrStepObserver and a prof
 | 0.3.0 | Java 17 restored; Java 21 virtual threads via an application executor, ScopedValue separated into java25, JFR into java27. |
 
 [Compatibility and migration](../JAVA-SUPPORT.md)
+
+[← Back to usage guide / Назад к руководству](en.md)

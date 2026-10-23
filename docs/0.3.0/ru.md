@@ -1,8 +1,10 @@
 # reactive-pipeline-kit 0.3.0 — руководство
 
+[← Back to documentation and versions / Назад к документации и версиям](../index.md)
+
 [English](en.md) · [Русский](ru.md)
 
-[Версии](../README.md) · [README](../../README.ru.md) · [Возможности Java](java.ru.md)
+[Версии](../index.md) · [README](../../README.md) · [Возможности Java](java.ru.md)
 
 Типизированные пайплайны Reactor с повторами в пределах шага, ограниченной параллельностью записей и необязательными адаптерами JSON и диагностики JVM.
 
@@ -396,3 +398,5 @@ Example.java: failure(). Ожидается: failure=lookup; cause=NoSuchElement
 - [ScopedExample.java](examples/ScopedExample.java)
 
 [MIT](../../LICENSE)
+
+[← Back to documentation and versions / Назад к документации и версиям](../index.md)

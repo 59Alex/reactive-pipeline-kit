@@ -1,5 +1,7 @@
 # JFR diagnostics profile on Java 27
 
+[← Back to documentation and versions / Назад к документации и версиям](index.md)
+
 The opt-in `reactive-pipeline-kit-java27` module exposes `JfrStepObserver` and a
 local profiling example. Core and Jolt remain Java 17 libraries. The observer
 uses established JFR APIs; this separate runtime profile demonstrates Java 27's
@@ -118,3 +120,5 @@ not record the invoking shell's environment.
 The core/Jolt suite and optional Java 25 suite also run on Java 27. Bytecode
 minimums stay separate: 17 for core/Jolt, 25 for scoped context, and 27 for this
 diagnostics profile. All are non-preview.
+
+[← Back to documentation and versions / Назад к документации и версиям](index.md)

@@ -1,8 +1,10 @@
 # reactive-pipeline-kit 0.3.0 — usage guide
 
+[← Back to documentation and versions / Назад к документации и версиям](../index.md)
+
 [English](en.md) · [Русский](ru.md)
 
-[Versions](../README.md) · [README](../../README.md) · [Java features](java.en.md)
+[Versions](../index.md) · [README](../../README.md) · [Java features](java.en.md)
 
 Typed Reactor pipelines with local retry boundaries, bounded record concurrency, and optional JSON and JVM diagnostics adapters.
 
@@ -396,3 +398,5 @@ Example.java: failure(). Expected: failure=lookup; cause=NoSuchElementException.
 - [ScopedExample.java](examples/ScopedExample.java)
 
 [MIT](../../LICENSE)
+
+[← Back to documentation and versions / Назад к документации и версиям](../index.md)

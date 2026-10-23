@@ -1,5 +1,7 @@
 # Historical Java 27 migration (superseded)
 
+[← Back to documentation and versions / Назад к документации и версиям](index.md)
+
 This note describes the superseded **0.2.0** release, which required Java 27 for
 all modules and put scoped context in the core blocking adapter.
 
@@ -16,3 +18,5 @@ Java 27 support; it keeps newer capabilities in separately selected modules.
 Use [Java support and migration](JAVA-SUPPORT.md) for current requirements,
 commands, and API migration. The former Java 27 requirement is not the current
 support contract.
+
+[← Back to documentation and versions / Назад к документации и версиям](index.md)

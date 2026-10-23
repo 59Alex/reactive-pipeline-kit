@@ -1,5 +1,7 @@
 # Architecture
 
+[← Back to documentation and versions / Назад к документации и версиям](index.md)
+
 ## Purpose and boundary
 
 The library coordinates asynchronous transformations of individual records in a
@@ -162,3 +164,5 @@ Use this library to make an in-process pipeline's concurrency and retry boundari
 explicit. Keep step inputs immutable, remote effects idempotent where retries are
 enabled, and callbacks nonblocking. Use a durable queue/checkpoint layer outside
 this library when records must survive a process crash.
+
+[← Back to documentation and versions / Назад к документации и версиям](index.md)

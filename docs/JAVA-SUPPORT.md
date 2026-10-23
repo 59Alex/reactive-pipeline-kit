@@ -1,5 +1,7 @@
 # Java support and migration to 0.3.0
 
+[← Back to documentation and versions / Назад к документации и версиям](index.md)
+
 The default library works on Java 17. Core and Jolt are tested on LTS runtimes
 **17, 21, and 25**, and also on **Java 27**. Scoped context and JFR diagnostics
 are separate opt-in artifacts. No module requires preview features or flags.
@@ -134,3 +136,5 @@ The required class-file versions are 61.0 for core/Jolt, 69.0 for `java25`, and
 71.0 for `java27`. Publication metadata declares minimum JVM versions 17, 25,
 and 27 respectively. There is no core-to-optional-module dependency and no preview
 class-file marker.
+
+[← Back to documentation and versions / Назад к документации и версиям](index.md)

@@ -1,7 +1,9 @@
 # reactive-pipeline-kit
 
-**Language:** [English](README.md) · [Русский](README.ru.md)<br>
-**Library version:** [0.3.0](docs/0.3.0/en.md) · [All versions](docs/README.md)<br>
+<details name="readme-language">
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="assets/lang-en-dark.svg"><img src="assets/lang-en-light.svg" width="42" height="26" alt="EN"></picture></summary>
+
+**Library version:** [0.3.0](docs/0.3.0/en.md) · [All versions](docs/index.md)<br>
 **Java:** [17](docs/0.3.0/java.en.md#java-17) · [21](docs/0.3.0/java.en.md#java-21) · [25](docs/0.3.0/java.en.md#java-25) · [27](docs/0.3.0/java.en.md#java-27)
 
 [**Usage guide: capabilities, examples and expected results →**](docs/0.3.0/en.md)
@@ -305,3 +307,44 @@ where timing is part of the asynchronous contract.
 ## License
 
 [MIT](LICENSE). Dependency licenses are listed in [third-party notices](THIRD-PARTY-NOTICES.md).
+
+</details>
+
+<details name="readme-language" open>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="assets/lang-ru-dark.svg"><img src="assets/lang-ru-light.svg" width="42" height="26" alt="RU"></picture></summary>
+
+**Версия библиотеки:** [0.3.0](docs/0.3.0/ru.md) · [Все версии](docs/index.md)<br>
+**Java:** [17](docs/0.3.0/java.ru.md#java-17) · [21](docs/0.3.0/java.ru.md#java-21) · [25](docs/0.3.0/java.ru.md#java-25) · [27](docs/0.3.0/java.ru.md#java-27)
+
+[**Руководство: возможности, примеры и результаты →**](docs/0.3.0/ru.md)
+
+Типизированные пайплайны Reactor с повторами в пределах шага, ограниченной параллельностью записей и необязательными адаптерами JSON и диагностики JVM.
+
+## Возможности
+
+| Возможность | Пример и объяснение |
+| --- | --- |
+| 1. Подключите нужные модули | [Открыть](docs/0.3.0/ru.md#1-подключите-нужные-модули) |
+| 2. Соберите типизированные и условные шаги | [Открыть](docs/0.3.0/ru.md#2-соберите-типизированные-и-условные-шаги) |
+| 3. Повторяйте только упавший шаг | [Открыть](docs/0.3.0/ru.md#3-повторяйте-только-упавший-шаг) |
+| 4. Ограничьте параллельность и выберите порядок | [Открыть](docs/0.3.0/ru.md#4-ограничьте-параллельность-и-выберите-порядок) |
+| 5. Подключите HTTP и передавайте отмену | [Открыть](docs/0.3.0/ru.md#5-подключите-http-и-передавайте-отмену) |
+| 6. Изолируйте блокирующий ввод-вывод и используйте виртуальные потоки | [Открыть](docs/0.3.0/ru.md#6-изолируйте-блокирующий-ввод-вывод-и-используйте-виртуальные-потоки) |
+| 7. Необязательный контекст ScopedValue на Java 25 | [Открыть](docs/0.3.0/ru.md#7-необязательный-контекст-scopedvalue-на-java-25) |
+| 8. Преобразуйте JSON-деревья через Jolt | [Открыть](docs/0.3.0/ru.md#8-преобразуйте-json-деревья-через-jolt) |
+| 9. Наблюдайте выполнение и записывайте JFR на Java 27 | [Открыть](docs/0.3.0/ru.md#9-наблюдайте-выполнение-и-записывайте-jfr-на-java-27) |
+| 10. Разбирайте ошибки и исправляйте конфигурацию | [Открыть](docs/0.3.0/ru.md#10-разбирайте-ошибки-и-исправляйте-конфигурацию) |
+
+## Совместимость и установка
+
+Основной артефакт требует Java 17. Проверены JVM 17, 21, 25 и 27. Более новая JVM не повышает минимальную версию библиотеки.
+
+Дополнительные модули pipeline имеют отдельные требования: java25 — ScopedValue, java27 — JFR-диагностика. Они не подключаются к ядру автоматически.
+
+Артефакты устанавливаются из исходников через Maven Local; публикация в Maven Central пока не настроена. Точные зависимости, команды и требования примера находятся в руководстве.
+
+## Лицензия
+
+[MIT](LICENSE). Лицензии сторонних зависимостей сохраняются.
+
+</details>

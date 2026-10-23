@@ -1,7 +1,9 @@
 # reactive-pipeline-kit 0.3.0 — Java: совместимость и используемые возможности
 
+[← Back to usage guide / Назад к руководству](ru.md)
+
 [English](java.en.md) · [Русский](java.ru.md)<br>
-[Руководство](ru.md) · [Версии библиотеки](../README.md)
+[Руководство](ru.md) · [Версии библиотеки](../index.md)
 
 [Java 17](#java-17) · [Java 21](#java-21) · [Java 25](#java-25) · [Java 27](#java-27)
 
@@ -67,3 +69,5 @@ try {
 | 0.3.0 | Минимум снова Java 17; Java 21 virtual threads через executor приложения, ScopedValue вынесен в java25, JFR — в java27. |
 
 [Совместимость и миграция](../JAVA-SUPPORT.md)
+
+[← Back to usage guide / Назад к руководству](ru.md)
