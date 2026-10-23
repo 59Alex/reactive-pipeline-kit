@@ -1,5 +1,11 @@
 # reactive-pipeline-kit
 
+**Language:** [English](README.md) · [Русский](README.ru.md)<br>
+**Library version:** [0.3.0](docs/0.3.0/en.md) · [All versions](docs/README.md)<br>
+**Java:** [17](docs/0.3.0/java.en.md#java-17) · [21](docs/0.3.0/java.en.md#java-21) · [25](docs/0.3.0/java.en.md#java-25) · [27](docs/0.3.0/java.en.md#java-27)
+
+[**Usage guide: capabilities, examples and expected results →**](docs/0.3.0/en.md)
+
 Typed Reactor pipelines for record enrichment and transformation, with explicit
 retry boundaries, bounded concurrency, and named step diagnostics.
 
