@@ -40,7 +40,9 @@ runtime context; it does not imply a deployed queue or independent executor.
 | `Step` | Application transformation; must return a cold, one-result Mono |
 | `StepObserver` | Diagnostics without payload copies; may be called concurrently |
 | `HttpPort` | Application-owned remote-call boundary and error classification |
-| `BlockingSteps` | Explicit executor boundary for blocking I/O, cancellation through FutureTask, bounded scoped context |
+| `BlockingSteps` | Java 17 executor boundary for blocking I/O, cancellation through FutureTask, explicit ExecutionContext parameter |
+| `ScopedBlockingSteps` (optional Java 25 module) | ScopedValue binding around the core blocking operation; delegates all submission/cancellation; tested on 25/27 |
+| `JfrStepObserver` (optional Java 27 module) | Metadata-only custom JFR events; application owns recording and startup options |
 | `JoltStep` | Specification snapshot, built-in operation allowlist, defensive copies |
 
 No mutable attempt counter is stored in the reusable definition. The captured
@@ -55,17 +57,39 @@ during executor handoff therefore still reaches the exact task. A queued task
 cancelled before it starts does not invoke the operation. Cancelling an already
 running task requests interruption; cooperation remains the operation's duty.
 
-The task binds an immutable `ExecutionContext` with `ScopedValue` only around the
-blocking operation. Its `done()` callback uses terminal `Future.State`,
-`resultNow()`, or `exceptionNow()` after that binding has ended. It does not block
-waiting for a result, and downstream signals do not inherit the scoped binding.
-Reactor context is still used for asynchronous propagation. A cancelled operation
-that ignores interruption may remain inside its binding until it actually exits.
+The core task passes `ExecutionContext` explicitly to the operation. Its `done()`
+callback reads `get()` only after the task reaches a terminal state, so it does
+not wait. An `ExecutionException` is unwrapped to preserve the original cause.
+No Java 21/25-only API or ambient context mechanism is present in the core.
+
+The optional `java25` module depends on the core, never the reverse. Its
+`ScopedBlockingSteps` wraps only the operation with `ScopedValue`; it does not
+duplicate the task/cancellation implementation. The binding ends before the core
+signals success or failure. Reactor context remains the mechanism for asynchronous
+propagation. A cancelled operation that ignores interruption may remain inside
+its binding until it actually exits.
 
 The application creates and closes the executor. A virtual-thread-per-task
 executor allows blocking I/O without making the pipeline core blocking, but it
 does not bound submission by itself. Use `process` concurrency limits and do not
 interpret cancellation as proof that the physical I/O has stopped.
+
+### Optional Java 27 diagnostics boundary
+
+`JfrStepObserver` implements the existing observer interface and creates one
+independent JFR event per callback. It copies only execution ID, static step name,
+lifecycle kind, attempt, elapsed nanoseconds, and exception class. Event emission
+is disabled unless an application-owned recording enables the event type. No
+recording is started, no VM options are changed, and no business payload or
+exception message is included by the observer.
+
+The separate Java 27 example demonstrates JFR in-process startup-data redaction.
+That JVM feature filters certain built-in startup events; it does not redact
+custom observer fields or promise that every enabled JFR event is safe to share.
+Use non-sensitive step names and deliberately choose the other recorded events.
+This profile changes no pipeline retry, cancellation, or concurrency behavior and
+makes no measured performance claim. Core/Jolt retain Java 17 bytecode; optional
+Java 25 and 27 modules depend on core, never the reverse.
 
 ## Critical flow: enrichment fails once
 
@@ -96,9 +120,9 @@ Mono; a noncooperative callback or remote system may still continue its work.
 - Observer failures cannot turn successful business work into a retried step.
 - Jolt receives fresh mutable copies and a new transform instance for each
   attempt. Only the allowlisted built-in operations can be selected.
-- Blocking operations run only through an explicitly supplied executor. Their
-  scoped binding ends on operation exit, including exceptional exit, and is not
-  used as a substitute for Reactor context.
+- Blocking operations run through an explicitly supplied executor and receive
+  explicit execution metadata. Only the optional Java 25 adapter introduces a
+  scoped binding; it ends on operation exit and does not replace Reactor context.
 
 ## Decisions and tradeoffs
 

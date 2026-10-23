@@ -62,32 +62,25 @@ public final class JoltStep implements Step<Object, Object> {
 
     private static Object copy(Object value, int depth) {
         if (depth > 128) throw new IllegalArgumentException("JSON tree is cyclic or exceeds depth 128");
-        return switch (value) {
-            case null -> null;
-            case String text -> text;
-            case Boolean flag -> flag;
-            case Byte number -> number;
-            case Short number -> number;
-            case Integer number -> number;
-            case Long number -> number;
-            case BigInteger number when number.getClass() == BigInteger.class -> number;
-            case BigDecimal number when number.getClass() == BigDecimal.class -> number;
-            case Float number when Float.isFinite(number) -> number;
-            case Double number when Double.isFinite(number) -> number;
-            case Map<?, ?> map -> {
-                Map<String, Object> result = new LinkedHashMap<>();
-                map.forEach((key, item) -> {
-                    if (!(key instanceof String name)) throw new IllegalArgumentException("JSON object keys must be strings");
-                    result.put(name, copy(item, depth + 1));
-                });
-                yield result;
-            }
-            case List<?> list -> {
-                List<Object> result = new ArrayList<>(list.size());
-                list.forEach(item -> result.add(copy(item, depth + 1)));
-                yield result;
-            }
-            default -> throw new IllegalArgumentException("Unsupported JSON value: " + value.getClass().getName());
-        };
+        if (value == null || value instanceof String || value instanceof Boolean
+                || value instanceof Byte || value instanceof Short || value instanceof Integer
+                || value instanceof Long || value.getClass() == BigInteger.class
+                || value.getClass() == BigDecimal.class) return value;
+        if (value instanceof Float number && Float.isFinite(number)) return number;
+        if (value instanceof Double number && Double.isFinite(number)) return number;
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            map.forEach((key, item) -> {
+                if (!(key instanceof String name)) throw new IllegalArgumentException("JSON object keys must be strings");
+                result.put(name, copy(item, depth + 1));
+            });
+            return result;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> result = new ArrayList<>(list.size());
+            list.forEach(item -> result.add(copy(item, depth + 1)));
+            return result;
+        }
+        throw new IllegalArgumentException("Unsupported JSON value: " + value.getClass().getName());
     }
 }

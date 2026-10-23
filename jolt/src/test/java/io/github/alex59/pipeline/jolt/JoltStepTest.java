@@ -52,7 +52,7 @@ class JoltStepTest {
     }
 
     @Test
-    void patternSwitchPreservesJsonScalarTypesAndNestedNulls() {
+    void copyPreservesJsonScalarTypesAndNestedNulls() {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("null", null);
         input.put("text", "value");

@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,21 +26,17 @@ import reactor.util.context.Context;
 @Timeout(15)
 class BlockingStepsTest {
     @Test
-    void usesRealVirtualThreadsAndClearsBindingBeforeDownstreamSignals() {
-        assertEquals(Optional.empty(), BlockingSteps.currentContext());
+    void runsColdOperationsOnSelectedExecutorWithExplicitContext() {
         AtomicInteger calls = new AtomicInteger();
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (var executor = ExecutorFixture.open()) {
             var pipeline = Pipeline.<String>start()
-                    .then("blocking", BlockingSteps.call(executor, input -> {
-                        assertTrue(Thread.currentThread().isVirtual());
+                    .then("blocking", BlockingSteps.call(executor, (input, context) -> {
+                        assertWorkerKind();
                         calls.incrementAndGet();
-                        assertEquals("tenant-a", BlockingSteps.currentContext().orElseThrow().subscriberContext().get("tenant"));
+                        assertEquals("tenant-a", context.subscriberContext().get("tenant"));
                         return input.toUpperCase(java.util.Locale.ROOT);
                     }))
-                    .map("after", output -> {
-                        assertEquals(Optional.empty(), BlockingSteps.currentContext());
-                        return output;
-                    });
+                    .map("after", output -> output);
             var cold = pipeline.run("java").contextWrite(Context.of("tenant", "tenant-a"));
             assertEquals(0, calls.get());
             StepVerifier.create(cold).expectNext("JAVA").verifyComplete();
@@ -49,22 +44,18 @@ class BlockingStepsTest {
             assertEquals(2, calls.get());
             assertFalse(executor.isShutdown(), "only the application may close the executor");
         }
-        assertEquals(Optional.empty(), BlockingSteps.currentContext());
     }
 
     @Test
-    void concurrentExecutionsKeepScopedContextSeparateAndDoNotBindUnrelatedTasks() throws Exception {
+    void concurrentExecutionsReceiveSeparateExplicitContexts() {
         var identities = ConcurrentHashMap.<UUID>newKeySet();
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor();
-             var unrelatedExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var pipeline = Pipeline.<Integer>start().then("blocking", BlockingSteps.call(executor, input -> {
-                assertTrue(Thread.currentThread().isVirtual());
-                var context = BlockingSteps.currentContext().orElseThrow();
+        try (var executor = ExecutorFixture.open()) {
+            var pipeline = Pipeline.<Integer>start().then("blocking", BlockingSteps.call(executor, (input, context) -> {
+                assertWorkerKind();
                 identities.add(context.executionId());
                 assertEquals(input, context.subscriberContext().get("record"));
-                assertTrue(unrelatedExecutor.submit(BlockingSteps::currentContext).get(3, TimeUnit.SECONDS).isEmpty());
-                Thread.sleep(Duration.ofMillis(1));
-                assertSame(context, BlockingSteps.currentContext().orElseThrow());
+                Thread.sleep(1);
+                assertEquals(input, context.subscriberContext().get("record"));
                 return input;
             }));
             var results = Flux.range(0, 40).flatMap(input -> pipeline.run(input)
@@ -72,7 +63,6 @@ class BlockingStepsTest {
             assertNotNull(results);
             assertEquals(40, results.size());
             assertEquals(40, identities.size());
-            assertTrue(executor.submit(BlockingSteps::currentContext).get(3, TimeUnit.SECONDS).isEmpty());
         }
     }
 
@@ -81,8 +71,8 @@ class BlockingStepsTest {
         var started = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
         var completed = new AtomicInteger();
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var pipeline = Pipeline.<Integer>start().then("wait", BlockingSteps.call(executor, input -> {
+        try (var executor = ExecutorFixture.open()) {
+            var pipeline = Pipeline.<Integer>start().then("wait", BlockingSteps.call(executor, (input, context) -> {
                 started.countDown();
                 try {
                     new CountDownLatch(1).await();
@@ -105,18 +95,19 @@ class BlockingStepsTest {
         AtomicInteger operations = new AtomicInteger();
         var subscriber = new BaseSubscriber<Integer>() { };
         try (var executor = new PausingExecutor()) {
-            var pipeline = Pipeline.<Integer>start().then("handoff", BlockingSteps.call(executor, input -> {
+            var pipeline = Pipeline.<Integer>start().then("handoff", BlockingSteps.call(executor, (input, context) -> {
                 operations.incrementAndGet();
                 return input;
             }));
-            Thread subscriptionThread = Thread.ofVirtual().start(() -> pipeline.run(1).subscribe(subscriber));
+            Thread subscriptionThread = new Thread(() -> pipeline.run(1).subscribe(subscriber));
+            subscriptionThread.start();
             try {
                 assertTrue(executor.handoff.await(3, TimeUnit.SECONDS));
                 subscriber.dispose();
             } finally {
                 executor.accept.countDown();
             }
-            subscriptionThread.join(Duration.ofSeconds(3));
+            subscriptionThread.join(3000);
             assertFalse(subscriptionThread.isAlive());
             assertTrue(executor.finished.await(3, TimeUnit.SECONDS));
             assertEquals(0, operations.get());
@@ -127,8 +118,8 @@ class BlockingStepsTest {
     void attemptTimeoutInterruptsBlockingTaskAndKeepsTimeoutAsCause() throws Exception {
         var started = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var pipeline = Pipeline.<Integer>start().then("timeout", BlockingSteps.call(executor, input -> {
+        try (var executor = ExecutorFixture.open()) {
+            var pipeline = Pipeline.<Integer>start().then("timeout", BlockingSteps.call(executor, (input, context) -> {
                 started.countDown();
                 try {
                     new CountDownLatch(1).await();
@@ -150,18 +141,18 @@ class BlockingStepsTest {
     }
 
     @Test
-    void checkedFailureIsPreservedAndScopeDoesNotLeakOnReusedWorker() throws Exception {
+    void checkedFailureIsPreservedAndExecutorRemainsUsable() throws Exception {
         IOException expected = new IOException("lookup failed");
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            var pipeline = Pipeline.<Integer>start().then("legacy", BlockingSteps.call(executor, input -> {
-                assertTrue(BlockingSteps.currentContext().isPresent());
+        try (var executor = new ExecutorFixture(Executors.newSingleThreadExecutor())) {
+            var pipeline = Pipeline.<Integer>start().then("legacy", BlockingSteps.call(executor, (input, context) -> {
+                assertNotNull(context.executionId());
                 throw expected;
             }));
             StepVerifier.create(pipeline.run(1)).expectErrorSatisfies(error -> {
                 assertEquals("legacy", ((StepFailure) error).step());
                 assertSame(expected, error.getCause());
             }).verify();
-            assertTrue(executor.submit(BlockingSteps::currentContext).get(3, TimeUnit.SECONDS).isEmpty());
+            assertEquals(42, executor.submit(() -> 42).get(3, TimeUnit.SECONDS));
         }
     }
 
@@ -170,12 +161,12 @@ class BlockingStepsTest {
         AtomicInteger earlier = new AtomicInteger();
         AtomicInteger attempts = new AtomicInteger();
         AtomicReference<UUID> execution = new AtomicReference<>();
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (var executor = ExecutorFixture.open()) {
             var pipeline = Pipeline.<Integer>start().map("first", input -> {
                 earlier.incrementAndGet();
                 return input;
-            }).then("blocking", BlockingSteps.call(executor, input -> {
-                UUID id = BlockingSteps.currentContext().orElseThrow().executionId();
+            }).then("blocking", BlockingSteps.call(executor, (input, context) -> {
+                UUID id = context.executionId();
                 execution.compareAndSet(null, id);
                 assertEquals(execution.get(), id);
                 if (attempts.incrementAndGet() == 1) throw new IOException("transient");
@@ -188,14 +179,14 @@ class BlockingStepsTest {
     }
 
     @Test
-    void virtualThreadsRespectPipelineConcurrencyAndCancellation() throws Exception {
+    void selectedExecutorRespectsPipelineConcurrencyAndCancellation() throws Exception {
         AtomicInteger started = new AtomicInteger();
         AtomicInteger active = new AtomicInteger();
         AtomicInteger peak = new AtomicInteger();
         var ready = new CountDownLatch(3);
         var stopped = new CountDownLatch(3);
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var pipeline = Pipeline.<Integer>start().then("wait", BlockingSteps.call(executor, input -> {
+        try (var executor = ExecutorFixture.open()) {
+            var pipeline = Pipeline.<Integer>start().then("wait", BlockingSteps.call(executor, (input, context) -> {
                 started.incrementAndGet();
                 peak.accumulateAndGet(active.incrementAndGet(), Math::max);
                 ready.countDown();
@@ -219,19 +210,66 @@ class BlockingStepsTest {
 
     @Test
     void rejectedExecutorAndNullResultAreNamedFailures() {
-        var closed = Executors.newVirtualThreadPerTaskExecutor();
+        var closed = ExecutorFixture.open();
         closed.close();
-        StepVerifier.create(Pipeline.<Integer>start().then("closed", BlockingSteps.call(closed, input -> input)).run(1))
+        StepVerifier.create(Pipeline.<Integer>start().then("closed", BlockingSteps.call(closed, (input, context) -> input)).run(1))
                 .expectErrorSatisfies(error -> assertInstanceOf(RejectedExecutionException.class, error.getCause())).verify();
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            StepVerifier.create(Pipeline.<Integer>start().then("null", BlockingSteps.call(executor, input -> null)).run(1))
+        try (var executor = ExecutorFixture.open()) {
+            StepVerifier.create(Pipeline.<Integer>start().then("null", BlockingSteps.call(executor, (input, context) -> null)).run(1))
                     .expectErrorSatisfies(error -> assertInstanceOf(NullPointerException.class, error.getCause())).verify();
         }
     }
 
+    /** Test-only reflection keeps the test bytecode compatible with Java 17. */
+    private static void assertWorkerKind() {
+        if (Runtime.version().feature() >= 21) {
+            try {
+                assertEquals(true, Thread.class.getMethod("isVirtual").invoke(Thread.currentThread()));
+            } catch (ReflectiveOperationException failure) {
+                throw new AssertionError("Virtual thread verification failed", failure);
+            }
+        } else {
+            assertTrue(Runtime.version().feature() < 21);
+        }
+    }
+
+    private static final class ExecutorFixture extends AbstractExecutorService implements AutoCloseable {
+        private final ExecutorService delegate;
+
+        private ExecutorFixture(ExecutorService delegate) { this.delegate = delegate; }
+
+        static ExecutorFixture open() {
+            if (Runtime.version().feature() >= 21) {
+                try {
+                    return new ExecutorFixture((ExecutorService) Executors.class
+                            .getMethod("newVirtualThreadPerTaskExecutor").invoke(null));
+                } catch (ReflectiveOperationException failure) {
+                    throw new AssertionError("Virtual executor creation failed", failure);
+                }
+            }
+            return new ExecutorFixture(Executors.newCachedThreadPool());
+        }
+
+        @Override public void close() {
+            delegate.shutdownNow();
+            try {
+                assertTrue(delegate.awaitTermination(5, TimeUnit.SECONDS), "executor did not terminate");
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("interrupted while closing test executor", failure);
+            }
+        }
+        @Override public void execute(Runnable command) { delegate.execute(command); }
+        @Override public void shutdown() { delegate.shutdown(); }
+        @Override public List<Runnable> shutdownNow() { return delegate.shutdownNow(); }
+        @Override public boolean isShutdown() { return delegate.isShutdown(); }
+        @Override public boolean isTerminated() { return delegate.isTerminated(); }
+        @Override public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException { return delegate.awaitTermination(timeout, unit); }
+    }
+
     /** Deliberately holds the acceptance boundary to reproduce a cancellation race. */
-    private static final class PausingExecutor extends AbstractExecutorService {
-        private final ExecutorService delegate = Executors.newVirtualThreadPerTaskExecutor();
+    private static final class PausingExecutor extends AbstractExecutorService implements AutoCloseable {
+        private final ExecutorFixture delegate = ExecutorFixture.open();
         private final CountDownLatch handoff = new CountDownLatch(1);
         private final CountDownLatch accept = new CountDownLatch(1);
         private final CountDownLatch finished = new CountDownLatch(1);
@@ -248,6 +286,7 @@ class BlockingStepsTest {
                 try { command.run(); } finally { finished.countDown(); }
             });
         }
+        @Override public void close() { delegate.close(); }
         @Override public void shutdown() { delegate.shutdown(); }
         @Override public List<Runnable> shutdownNow() { return delegate.shutdownNow(); }
         @Override public boolean isShutdown() { return delegate.isShutdown(); }

@@ -11,7 +11,11 @@ import reactor.util.context.ContextView;
  * @param subscriberContext Reactor subscriber context captured at subscription
  */
 public record ExecutionContext(UUID executionId, ContextView subscriberContext) {
-    /** Validates the execution metadata. */
+    /**
+     * Validates the execution metadata.
+     * @param executionId unique execution identity
+     * @param subscriberContext captured subscriber context
+     */
     public ExecutionContext {
         Objects.requireNonNull(executionId, "executionId");
         Objects.requireNonNull(subscriberContext, "subscriberContext");

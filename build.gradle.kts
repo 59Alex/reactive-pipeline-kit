@@ -1,21 +1,30 @@
 plugins { base }
 
+val testJavaVersion = providers.gradleProperty("testJavaVersion").map(String::toInt)
+    .getOrElse(JavaVersion.current().majorVersion.toInt())
+
 subprojects {
+    val minimumJava = when (project.name) {
+        "java27" -> 27
+        "java25" -> 25
+        else -> 17
+    }
+    val executionJava = maxOf(minimumJava, testJavaVersion)
     apply(plugin = "java-library")
     apply(plugin = "maven-publish")
     group = "io.github.59alex"
-    version = "0.2.0"
+    version = "0.3.0"
     repositories { mavenCentral() }
 
     extensions.configure<JavaPluginExtension> {
-        toolchain.languageVersion.set(JavaLanguageVersion.of(27))
-        sourceCompatibility = JavaVersion.VERSION_27
-        targetCompatibility = JavaVersion.VERSION_27
+        toolchain.languageVersion.set(JavaLanguageVersion.of(executionJava))
+        sourceCompatibility = JavaVersion.toVersion(minimumJava)
+        targetCompatibility = JavaVersion.toVersion(minimumJava)
         withSourcesJar()
         withJavadocJar()
     }
     tasks.withType<JavaCompile>().configureEach {
-        options.release.set(27)
+        options.release.set(minimumJava)
         options.encoding = "UTF-8"
     }
     tasks.withType<Test>().configureEach { useJUnitPlatform() }

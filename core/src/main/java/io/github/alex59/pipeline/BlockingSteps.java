@@ -1,7 +1,8 @@
 package io.github.alex59.pipeline;
 
 import java.util.Objects;
-import java.util.Optional;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
@@ -16,8 +17,6 @@ import reactor.core.publisher.Mono;
  * noncooperative operation can keep doing.
  */
 public final class BlockingSteps {
-    private static final ScopedValue<ExecutionContext> CURRENT = ScopedValue.newInstance();
-
     private BlockingSteps() { }
 
     /**
@@ -31,18 +30,19 @@ public final class BlockingSteps {
         /**
          * Performs one attempt on the supplied executor.
          * @param input current step input
+         * @param context explicit execution identity and subscriber context
          * @return a non-null result
          * @throws Exception operation failure, preserved as the step's cause
          */
-        O apply(I input) throws Exception;
+        O apply(I input, ExecutionContext context) throws Exception;
     }
 
     /**
      * Adapts blocking work into a cold step. Every subscription submits a fresh
      * task. Cancellation cancels that task with interruption requested; the
      * operation must cooperate, and external effects cannot be rolled back.
-     * The scoped execution context is bound only while the operation is running,
-     * and is removed before its result is signalled downstream.
+     * Execution context is passed explicitly to the operation. No ambient or
+     * thread-local context is installed by this Java 17-compatible adapter.
      *
      * @param executor application-owned executor; it must not execute blocking
      *                 work inline on the subscribing thread
@@ -56,16 +56,22 @@ public final class BlockingSteps {
         Objects.requireNonNull(operation, "operation");
         return (input, context) -> Mono.create(sink -> {
             AtomicBoolean cancelled = new AtomicBoolean();
-            FutureTask<O> task = new FutureTask<>(() -> ScopedValue.where(CURRENT, context)
-                    .call(() -> Objects.requireNonNull(operation.apply(input), "blocking operation returned null"))) {
+            FutureTask<O> task = new FutureTask<>(() -> Objects.requireNonNull(
+                    operation.apply(input, context), "blocking operation returned null")) {
                 @Override
                 protected void done() {
-                    if (cancelled.get()) return;
-                    switch (state()) {
-                        case SUCCESS -> sink.success(resultNow());
-                        case FAILED -> sink.error(exceptionNow());
-                        case CANCELLED -> { /* Downstream owns cancellation. */ }
-                        case RUNNING -> sink.error(new IllegalStateException("Task completion called before a terminal state"));
+                    if (cancelled.get() || isCancelled()) return;
+                    // done() is invoked only after a terminal state, so get()
+                    // reads an already available result without waiting.
+                    try {
+                        sink.success(get());
+                    } catch (ExecutionException failure) {
+                        sink.error(failure.getCause());
+                    } catch (InterruptedException failure) {
+                        Thread.currentThread().interrupt();
+                        sink.error(failure);
+                    } catch (CancellationException ignored) {
+                        // Cancellation may race the terminal-state check.
                     }
                 }
             };
@@ -85,14 +91,4 @@ public final class BlockingSteps {
         });
     }
 
-    /**
-     * Looks up context inside the synchronous dynamic extent of a blocking
-     * operation. This is not asynchronous propagation: unrelated threads,
-     * Reactor scheduler hops, and downstream signals have no binding from this
-     * adapter. Use Reactor context across asynchronous boundaries.
-     * @return current blocking operation's context, or empty outside its scope
-     */
-    public static Optional<ExecutionContext> currentContext() {
-        return CURRENT.isBound() ? Optional.of(CURRENT.get()) : Optional.empty();
-    }
 }

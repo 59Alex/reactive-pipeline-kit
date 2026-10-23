@@ -14,7 +14,13 @@ import java.util.function.Predicate;
  */
 public record StepPolicy(Duration timeout, int maxRetries, Duration retryDelay,
                          Predicate<Throwable> retryOn) {
-    /** Validates duration and count boundaries. */
+    /**
+     * Validates duration and count boundaries.
+     * @param timeout positive attempt timeout
+     * @param maxRetries nonnegative additional attempt count
+     * @param retryDelay nonnegative delay between attempts
+     * @param retryOn retry eligibility predicate
+     */
     public StepPolicy {
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(retryDelay, "retryDelay");
